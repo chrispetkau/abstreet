@@ -7,11 +7,32 @@ use geom::Distance;
 use crate::{Direction, DrivingSide, LaneSpec, LaneType, MapConfig};
 
 pub fn get_lane_specs_ltr(orig_tags: &Tags, cfg: &MapConfig) -> Vec<LaneSpec> {
+    // Special cases first
+    if orig_tags.is_any("railway", vec!["light_rail", "rail"]) {
+        return vec![LaneSpec {
+            lt: LaneType::LightRail,
+            dir: Direction::Fwd,
+            width: LaneSpec::typical_lane_widths(LaneType::LightRail, orig_tags)[0].0,
+        }];
+    }
+
     let mut tags = osm2lanes::tag::Tags::default();
     for (k, v) in orig_tags.inner() {
-        // Workaround common incorrect tagging
         if k == "sidewalk" && v == "none" {
+            // Workaround common incorrect tagging
             tags.checked_insert("sidewalk", "no").unwrap();
+        } else if k == "sidewalk" && v == "separate" && cfg.inferred_sidewalks {
+            // Make blind guesses
+            let value = if orig_tags.is("oneway", "yes") {
+                if cfg.driving_side == DrivingSide::Right {
+                    "right"
+                } else {
+                    "left"
+                }
+            } else {
+                "both"
+            };
+            tags.checked_insert("sidewalk", value).unwrap();
         } else {
             tags.checked_insert(k.to_string(), v).unwrap();
         }
@@ -35,6 +56,22 @@ pub fn get_lane_specs_ltr(orig_tags: &Tags, cfg: &MapConfig) -> Vec<LaneSpec> {
                 .map(|lane| transform(lane, &locale))
                 .flatten()
                 .collect::<Vec<_>>();
+
+            // No shoulders on unwalkable roads
+            if orig_tags.is_any(
+                crate::osm::HIGHWAY,
+                vec!["motorway", "motorway_link", "construction"],
+            ) || orig_tags.is("foot", "no")
+                || orig_tags.is("access", "no")
+                || orig_tags.is("motorroad", "yes")
+            {
+                result.retain(|lane| lane.lt != LaneType::Shoulder);
+            }
+
+            // Use our own widths for the moment
+            for lane in &mut result {
+                lane.width = LaneSpec::typical_lane_widths(lane.lt, orig_tags)[0].0;
+            }
 
             // Fix direction on outer lanes
             for (idx, lane) in result.iter_mut().enumerate() {
