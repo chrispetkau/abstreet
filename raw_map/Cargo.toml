@@ -12,6 +12,7 @@ anyhow = "1.0.38"
 geom = { path = "../geom" }
 kml = { path = "../kml" }
 log = "0.4.14"
+osm2lanes = { git = "https://github.com/a-b-street/osm2lanes" }
 petgraph = { version = "0.6.0" }
 serde = "1.0.123"
 strum = "0.21"
